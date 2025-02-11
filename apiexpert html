@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analyseur morphométrique d'aile antérieure d'abeille mellifera</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .canvas-container {
+            position: relative;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin: 10px 0;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        canvas {
+            border-radius: 8px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .measurement-box {
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin: 5px;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: box-shadow 0.3s ease;
+        }
+        .measurement-box:hover {
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .tooltip {
+            display: none;
+            position: absolute;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+        }
+        .measurement-box:hover .tooltip {
+            display: block;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .measurement-group {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: box-shadow 0.3s ease;
+        }
+        .measurement-group:hover {
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+        h2, h3 {
+            color: #555;
+        }
+        label {
+            font-weight: bold;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Analyseur morphométrique d'aile antérieure d'abeille mellifera</h2>
+
+        <div id="measurements"></div>
+
+        <div class="results">
+            <h3>Résultats Finaux</h3>
+            <div class="measurement-box">
+                <label>Moyenne Index Cubital: </label>
+                <span id="averageIndex">-</span>
+            </div>
+            <div class="measurement-box">
+                <label>Race Probable: </label>
+                <span id="beeRace">-</span>
+                <div class="tooltip">
+                    <img id="beeRaceImage" src="https://placehold.co/300x200" alt="Race d'abeille" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class WingMeasurement {
+            constructor(index) {
+                this.index = index;
+                this.createMeasurementGroup();
+                this.initializeCanvas();
+                this.setupEventListeners();
+
+                this.points = [];
+                this.lines = [];
+                this.isDrawing = false;
+                this.currentLine = null;
+                this.segmentA = 0;
+                this.segmentB = 0;
+            }
+
+            createMeasurementGroup() {
+                const container = document.getElementById('measurements');
+                const group = document.createElement('div');
+                group.className = 'measurement-group';
+                group.innerHTML = `
+                    <h3>Mesure ${this.index + 1}</h3>
+                    <div class="controls">
+                        <input type="file" accept="image/*" id="imageInput${this.index}">
+                        <button id="measureBtn${this.index}">Mesurer</button>
+                        <button id="drawBtn${this.index}">Tracer</button>
+                        <button id="resetBtn${this.index}">Recommencer</button>
+                    </div>
+                    <div class="canvas-container">
+                        <canvas id="canvas${this.index}" width="600" height="400"></canvas>
+                    </div>
+                    <div class="measurement-box">
+                        <label>Segment A: </label><span id="segmentA${this.index}">-</span>
+                    </div>
+                    <div class="measurement-box">
+                        <label>Segment B: </label><span id="segmentB${this.index}">-</span>
+                    </div>
+                    <div class="measurement-box">
+                        <label>Index Cubital: </label><span id="cubitalIndex${this.index}">-</span>
+                        <div class="tooltip">
+                            <img src="https://capytale2.ac-paris.fr/web/sites/default/files/2025/02-11/10-04-35/indice%20cubital2.PNG" />
+                        </div>
+                    </div>
+                    <div class="measurement-box">
+                        <label>Transgression Discoïdale: </label>
+                        <select id="transgression${this.index}">
+                            <option value="">Sélectionner</option>
+                            <option value="positive">Positive</option>
+                            <option value="negative">Négative</option>
+                            <option value="null">Nulle</option>
+                        </select>
+                        <div class="tooltip">
+                            <img src="https://capytale2.ac-paris.fr/web/sites/default/files/2025/02-11/10-04-35/calcul%20transgression%20discoidale.PNG" />
+                        </div>
+                    </div>
+                `;
+                container.appendChild(group);
+            }
+
+            initializeCanvas() {
+                this.canvas = document.getElementById(`canvas${this.index}`);
+                this.ctx = this.canvas.getContext('2d');
+            }
+
+            setupEventListeners() {
+                const imageInput = document.getElementById(`imageInput${this.index}`);
+                const measureBtn = document.getElementById(`measureBtn${this.index}`);
+                const drawBtn = document.getElementById(`drawBtn${this.index}`);
+                const resetBtn = document.getElementById(`resetBtn${this.index}`);
+
+                imageInput.addEventListener('change', (e) => this.handleImage(e));
+                measureBtn.addEventListener('click', () => this.startMeasuring());
+                drawBtn.addEventListener('click', () => this.startDrawing());
+                resetBtn.addEventListener('click', () => this.reset());
+
+                this.canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
+            }
+
+            handleImage(e) {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                        this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            startMeasuring() {
+                this.isDrawing = false;
+                this.points = [];
+                this.currentLine = null;
+            }
+
+            startDrawing() {
+                this.isDrawing = true;
+                this.points = [];
+                this.currentLine = null;
+            }
+
+            reset() {
+                this.points = [];
+                this.lines = [];
+                this.segmentA = 0;
+                this.segmentB = 0;
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                document.getElementById(`segmentA${this.index}`).textContent = '-';
+                document.getElementById(`segmentB${this.index}`).textContent = '-';
+                document.getElementById(`cubitalIndex${this.index}`).textContent = '-';
+                document.getElementById(`transgression${this.index}`).value = '';
+                updateAverageIndex();
+            }
+
+            handleCanvasClick(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                if (this.points.length < 2) {
+                    this.points.push({x, y});
+                    this.ctx.beginPath();
+                    this.ctx.arc(x, y, 3, 0, 2 * Math.PI);
+                    this.ctx.fill();
+
+                    if (this.points.length === 2) {
+                        this.drawLine();
+                        this.calculateMeasurement();
+                        this.points = [];
+                    }
+                }
+            }
+
+            drawLine() {
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.points[0].x, this.points[0].y);
+                this.ctx.lineTo(this.points[1].x, this.points[1].y);
+                this.ctx.stroke();
+            }
+
+            calculateMeasurement() {
+                const distance = Math.sqrt(
+                    Math.pow(this.points[1].x - this.points[0].x, 2) +
+                    Math.pow(this.points[1].y - this.points[0].y, 2)
+                );
+
+                if (!this.segmentA) {
+                    this.segmentA = distance;
+                    document.getElementById(`segmentA${this.index}`).textContent = distance.toFixed(2);
+                } else if (!this.segmentB) {
+                    this.segmentB = distance;
+                    document.getElementById(`segmentB${this.index}`).textContent = distance.toFixed(2);
+                    this.calculateCubitalIndex();
+                }
+            }
+
+            calculateCubitalIndex() {
+                if (this.segmentA && this.segmentB) {
+                    const index = this.segmentA / this.segmentB;
+                    document.getElementById(`cubitalIndex${this.index}`).textContent = index.toFixed(2);
+                    updateAverageIndex();
+                }
+            }
+        }
+
+        function updateAverageIndex() {
+            const indices = [];
+            for (let i = 0; i < 5; i++) {
+                const indexElement = document.getElementById(`cubitalIndex${i}`);
+                if (indexElement && indexElement.textContent !== '-') {
+                    indices.push(parseFloat(indexElement.textContent));
+                }
+            }
+
+            if (indices.length > 0) {
+                const average = indices.reduce((a, b) => a + b) / indices.length;
+                document.getElementById('averageIndex').textContent = average.toFixed(2);
+                determineBeeRace(average);
+            }
+        }
+
+        function determineBeeRace(index) {
+            const races = {
+                'Buckfast': [2.0, 2.7, "https://capytale2.ac-paris.fr/web/sites/default/files/2025/02-11/10-48-00/buckfast.PNG"],
+                'Ligustica': [2.0, 2.7, "https://capytale2.ac-paris.fr/web/sites/default/files/2025/02-11/10-48-23/ligustica2.PNG"],
+                'Carnica': [2.3, 3.2, "https://capytale2.ac-paris.fr/web/sites/default/files/2025/02-11/10-48-06/carnica3.PNG"],
+                'Anatolica': [2.3, 2.7, "https://capytale2.ac-paris.fr/web/sites/default/files/2025/02-11/10-47-54/anatolica.PNG"],
+                'Caucasia': [1.7, 2.2, "https://capytale2.ac-paris.fr/web/sites/default/files/2025/02-11/10-48-11/caucasia.PNG"],
+                'Mellifera': [1.4, 2.1, "https://capytale2.ac-paris.fr/web/sites/default/files/2025/02-11/10-47-54/abeille%20noire%202.PNG"],
+                'Intermissa': [2.1, 2.3, "https://capytale2.ac-paris.fr/web/sites/default/files/2025/02-11/10-48-18/intermissa.PNG"]
+            };
+
+            for (const [race, [min, max, image]] of Object.entries(races)) {
+                if (index >= min && index <= max) {
+                    document.getElementById('beeRace').textContent = race;
+                    document.getElementById('beeRaceImage').src = image;
+                    return;
+                }
+            }
+            document.getElementById('beeRace').textContent = 'Non déterminée';
+            document.getElementById('beeRaceImage').src = 'https://placehold.co/300x200';
+        }
+
+        // Initialize 5 measurement groups
+        for (let i = 0; i < 5; i++) {
+            new WingMeasurement(i);
+        }
+    </script>
+</body>
+</html>
